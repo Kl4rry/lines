@@ -3,6 +3,8 @@ name = "lines-rs"
 version = "0.1.0"
 authors = ["Axel Kappel <axel.e.kappel@gmail.com>"]
 edition = "2018"
+license = "MIT"
+description = "⚡ A fast line counter written in rust"
 
 [[bin]]
 name = "lines"
