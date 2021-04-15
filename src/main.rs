@@ -87,7 +87,7 @@ fn main() {
                         let dir = res.unwrap();
                         if dir.metadata().unwrap().is_dir() {
                             dir_stack.push(dir);
-                        } else {
+                        } else if dir.metadata().unwrap().is_file() {
                             files.push(dir.path());
                         }
                     }
