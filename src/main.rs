@@ -103,6 +103,6 @@ fn main() {
             }
         }
     });
-    println!("Total length: {}", total.load(Ordering::SeqCst));
+    println!("{}", total.load(Ordering::SeqCst));
     std::process::exit(exit_code.load(Ordering::SeqCst));
 }
