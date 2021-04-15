@@ -3,7 +3,7 @@ use std::fs;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicI32, Ordering};
 use std::sync::Arc;
 use std::path::Path;
 use rayon::iter::ParallelIterator;
@@ -36,6 +36,7 @@ fn main() {
         .arg(
             Arg::with_name("INPUT")
                 .help("Sets the input file to use")
+                .multiple(true)
                 .required(true),
         )
         .arg(
@@ -45,38 +46,33 @@ fn main() {
         )
         .get_matches();
 
-    let file = matches.value_of("INPUT").unwrap();
     let recursive = matches.is_present("recursive");
     let total = Arc::new(AtomicUsize::new(0));
-    let mut dir_stack = Vec::new();
-    let mut files = Vec::new();
+    let exit_code = Arc::new(AtomicI32::new(0));
 
-    let meta = match fs::metadata(file) {
-        Ok(meta) => meta,
-        _ => {
-            println!("lines: {} No such file or directory", file);
-            std::process::exit(1);
-        }
-    };
+    let iter = matches.values_of("INPUT").unwrap();
+    let targets: Vec<_> = iter.collect();
+    let par_file_iter = targets.into_par_iter();
 
-    if meta.is_file() {
-        count_lines_file(file, total.clone());
-        println!("Total length: {}", total.load(Ordering::SeqCst));
-    } else {
-        if recursive {
-            let start = fs::read_dir(file).unwrap();
-            for res in start {
-                let dir = res.unwrap();
-                if dir.metadata().unwrap().is_dir() {
-                    dir_stack.push(dir);
-                } else {
-                    files.push(dir.path());
-                }
+    par_file_iter.for_each(|file| {
+        let mut dir_stack = Vec::new();
+        let mut files = Vec::new();
+
+        let meta = match fs::metadata(file) {
+            Ok(meta) => meta,
+            _ => {
+                println!("lines: {} No such file or directory", file);
+                exit_code.store(1, Ordering::SeqCst);
+                return;
             }
-
-            while let Some(entry) = dir_stack.pop() {
-                let dirs = fs::read_dir(entry.path()).unwrap();
-                for res in dirs {
+        };
+    
+        if meta.is_file() {
+            count_lines_file(file, total.clone());
+        } else {
+            if recursive {
+                let start = fs::read_dir(file).unwrap();
+                for res in start {
                     let dir = res.unwrap();
                     if dir.metadata().unwrap().is_dir() {
                         dir_stack.push(dir);
@@ -84,16 +80,29 @@ fn main() {
                         files.push(dir.path());
                     }
                 }
+    
+                while let Some(entry) = dir_stack.pop() {
+                    let dirs = fs::read_dir(entry.path()).unwrap();
+                    for res in dirs {
+                        let dir = res.unwrap();
+                        if dir.metadata().unwrap().is_dir() {
+                            dir_stack.push(dir);
+                        } else {
+                            files.push(dir.path());
+                        }
+                    }
+                }
+    
+                let par_iter = files.into_par_iter();
+                let t = total.clone();
+                par_iter.for_each(|path| count_lines_file(path, t.clone()));
+            } else {
+                println!("lines: {} Is a directory", file);
+                exit_code.store(1, Ordering::SeqCst);
+                return;
             }
-
-            let par_iter = files.into_par_iter();
-            let t = total.clone();
-            par_iter.for_each(|path| count_lines_file(path, t.clone()));
-
-            println!("Total length: {}", total.load(Ordering::SeqCst));
-        } else {
-            println!("lines: {} Is a directory", file);
-            std::process::exit(1);
         }
-    }
+    });
+    println!("Total length: {}", total.load(Ordering::SeqCst));
+    std::process::exit(exit_code.load(Ordering::SeqCst));
 }
