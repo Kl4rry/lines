@@ -103,6 +103,9 @@ fn main() {
             }
         }
     });
-    println!("{}", total.load(Ordering::SeqCst));
+
+    if total.load(Ordering::SeqCst) != 0 {
+        println!("{}", total.load(Ordering::SeqCst));
+    }
     std::process::exit(exit_code.load(Ordering::SeqCst));
 }
