@@ -24,7 +24,7 @@ fn count_lines_file<P: AsRef<Path>>(path: P, total: Arc<AtomicUsize>) {
             };
             reader.consume(len);
         }
-        total.fetch_add(count, Ordering::SeqCst);
+        total.fetch_add(count, Ordering::Relaxed);
     }
 }
 
@@ -62,7 +62,7 @@ fn main() {
             Ok(meta) => meta,
             _ => {
                 println!("lines: {} No such file or directory", file);
-                exit_code.store(1, Ordering::SeqCst);
+                exit_code.store(1, Ordering::Relaxed);
                 return;
             }
         };
@@ -98,14 +98,14 @@ fn main() {
                 par_iter.for_each(|path| count_lines_file(path, t.clone()));
             } else {
                 println!("lines: {} Is a directory", file);
-                exit_code.store(1, Ordering::SeqCst);
+                exit_code.store(1, Ordering::Relaxed);
                 return;
             }
         }
     });
 
-    if total.load(Ordering::SeqCst) != 0 {
-        println!("{}", total.load(Ordering::SeqCst));
+    if total.load(Ordering::Relaxed) != 0 {
+        println!("{}", total.load(Ordering::Relaxed));
     }
-    std::process::exit(exit_code.load(Ordering::SeqCst));
+    std::process::exit(exit_code.load(Ordering::Relaxed));
 }
