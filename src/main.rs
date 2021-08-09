@@ -49,7 +49,7 @@ fn count_lines_dir<P: AsRef<Path>>(path: P, total: Arc<AtomicUsize>, pool: Arc<T
     });
 }
 
-fn main() {
+fn count() -> i32 {
     let matches = App::new("lines")
         .version("1.0")
         .author("Axel Kappel <axel.e.kappel@gmail.com>")
@@ -107,5 +107,10 @@ fn main() {
     if total.load(Ordering::Relaxed) != 0 {
         println!("{}", total.load(Ordering::Relaxed));
     }
-    std::process::exit(exit_code.load(Ordering::Relaxed));
+
+    return exit_code.load(Ordering::Relaxed);
+}
+
+fn main() {
+    std::process::exit(count());
 }
