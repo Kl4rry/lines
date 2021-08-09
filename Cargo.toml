@@ -5,6 +5,8 @@ authors = ["Axel Kappel <axel.e.kappel@gmail.com>"]
 edition = "2018"
 license = "MIT"
 description = "⚡ A fast line counter written in rust"
+repository = "https://github.com/Kl4rry/lines" 
+homepage = "https://github.com/Kl4rry/lines"
 
 [[bin]]
 name = "lines"
