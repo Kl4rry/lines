@@ -1,13 +1,19 @@
+use std::{
+    fs,
+    fs::File,
+    io::{BufRead, BufReader},
+    path::Path,
+    sync::{
+        atomic::{AtomicI32, AtomicUsize, Ordering},
+        Arc,
+    },
+};
+
 use clap::{App, Arg};
-use std::fs;
-use std::fs::File;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::sync::atomic::{AtomicUsize, AtomicI32, Ordering};
-use std::sync::Arc;
-use std::path::Path;
-use rayon::iter::ParallelIterator;
-use rayon::iter::IntoParallelIterator;
+use rayon::{
+    iter::{IntoParallelIterator, ParallelIterator},
+    ThreadPoolBuilder, ThreadPool
+};
 
 fn count_lines_file<P: AsRef<Path>>(path: P, total: Arc<AtomicUsize>) {
     if let Ok(file) = File::open(path) {
@@ -28,6 +34,21 @@ fn count_lines_file<P: AsRef<Path>>(path: P, total: Arc<AtomicUsize>) {
     }
 }
 
+fn count_lines_dir<P: AsRef<Path>>(path: P, total: Arc<AtomicUsize>, pool: Arc<ThreadPool>) {
+    let path_buf = path.as_ref().to_path_buf();
+    pool.install(|| {
+        let dirs = fs::read_dir(path_buf).unwrap();
+        for res in dirs {
+            let dir = res.unwrap();
+            if dir.metadata().unwrap().is_dir() {
+                count_lines_dir(dir.path(), total.clone(), pool.clone());
+            } else {
+                count_lines_file(dir.path(), total.clone());
+            }
+        }
+    });
+}
+
 fn main() {
     let matches = App::new("lines")
         .version("1.0")
@@ -46,6 +67,10 @@ fn main() {
         )
         .get_matches();
 
+    
+    let cpus = num_cpus::get();
+    let pool = Arc::new(ThreadPoolBuilder::new().num_threads(cpus * 2).build().unwrap());
+
     let recursive = matches.is_present("recursive");
     let total = Arc::new(AtomicUsize::new(0));
     let exit_code = Arc::new(AtomicI32::new(0));
@@ -55,9 +80,6 @@ fn main() {
     let par_file_iter = targets.into_par_iter();
 
     par_file_iter.for_each(|file| {
-        let mut dir_stack = Vec::new();
-        let mut files = Vec::new();
-
         let meta = match fs::metadata(file) {
             Ok(meta) => meta,
             _ => {
@@ -66,36 +88,12 @@ fn main() {
                 return;
             }
         };
-    
+
         if meta.is_file() {
             count_lines_file(file, total.clone());
         } else {
             if recursive {
-                let start = fs::read_dir(file).unwrap();
-                for res in start {
-                    let dir = res.unwrap();
-                    if dir.metadata().unwrap().is_dir() {
-                        dir_stack.push(dir);
-                    } else {
-                        files.push(dir.path());
-                    }
-                }
-    
-                while let Some(entry) = dir_stack.pop() {
-                    let dirs = fs::read_dir(entry.path()).unwrap();
-                    for res in dirs {
-                        let dir = res.unwrap();
-                        if dir.metadata().unwrap().is_dir() {
-                            dir_stack.push(dir);
-                        } else if dir.metadata().unwrap().is_file() {
-                            files.push(dir.path());
-                        }
-                    }
-                }
-    
-                let par_iter = files.into_par_iter();
-                let t = total.clone();
-                par_iter.for_each(|path| count_lines_file(path, t.clone()));
+                count_lines_dir(file, total.clone(), pool.clone());
             } else {
                 println!("lines: {} Is a directory", file);
                 exit_code.store(1, Ordering::Relaxed);
@@ -103,6 +101,8 @@ fn main() {
             }
         }
     });
+
+    drop(pool);
 
     if total.load(Ordering::Relaxed) != 0 {
         println!("{}", total.load(Ordering::Relaxed));
