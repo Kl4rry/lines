@@ -89,7 +89,7 @@ fn count() -> i32 {
         };
 
         if meta.is_file() {
-            count_lines_file_async(file, total.clone(), pool.clone());
+            count_lines_async(file.into(), total.clone(), pool.clone());
         } else {
             if recursive {
                 count_lines_dir(file.into(), total.clone(), pool.clone());
