@@ -1,13 +1,7 @@
-use std::{
-    fs,
-    fs::File,
-    io::{BufRead, BufReader},
-    path::Path,
-    sync::{
+use std::{fs, fs::File, io::{BufRead, BufReader}, path::{Path, PathBuf}, sync::{
         atomic::{AtomicI32, AtomicUsize, Ordering},
         Arc,
-    },
-};
+    }};
 
 use clap::{App, Arg};
 use rayon::{
@@ -34,16 +28,21 @@ fn count_lines_file<P: AsRef<Path>>(path: P, total: Arc<AtomicUsize>) {
     }
 }
 
-fn count_lines_dir<P: AsRef<Path>>(path: P, total: Arc<AtomicUsize>, pool: Arc<ThreadPool>) {
-    let path_buf = path.as_ref().to_path_buf();
+fn count_lines_async(path: PathBuf, total: Arc<AtomicUsize>, pool: Arc<ThreadPool>) {
     pool.install(|| {
-        let dirs = fs::read_dir(path_buf).unwrap();
+        count_lines_file(path, total);
+    });
+}
+
+fn count_lines_dir(path: PathBuf, total: Arc<AtomicUsize>, pool: Arc<ThreadPool>) {
+    pool.install(|| {
+        let dirs = fs::read_dir(path).unwrap();
         for res in dirs {
             let dir = res.unwrap();
             if dir.metadata().unwrap().is_dir() {
                 count_lines_dir(dir.path(), total.clone(), pool.clone());
             } else {
-                count_lines_file(dir.path(), total.clone());
+                count_lines_async(dir.path(), total.clone(), pool.clone());
             }
         }
     });
@@ -93,7 +92,7 @@ fn count() -> i32 {
             count_lines_file(file, total.clone());
         } else {
             if recursive {
-                count_lines_dir(file, total.clone(), pool.clone());
+                count_lines_dir(file.into(), total.clone(), pool.clone());
             } else {
                 println!("lines: {} Is a directory", file);
                 exit_code.store(1, Ordering::Relaxed);
